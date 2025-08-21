@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 /// Minimum supported version of Zig
-const min_ver = "0.13.0";
+const min_ver = "0.15.1";
 
 const emccOutputDir = "zig-out" ++ std.fs.path.sep_str ++ "htmlout" ++ std.fs.path.sep_str;
 const emccOutputFile = "index.html";
@@ -100,7 +100,7 @@ const config_h_flags = outer: {
 };
 
 fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, options: Options) !*std.Build.Step.Compile {
-    var raylib_flags_arr = std.ArrayList([]const u8).init(b.allocator);
+    var raylib_flags_arr = std.array_list.Managed([]const u8).init(b.allocator);
     defer raylib_flags_arr.deinit();
 
     try raylib_flags_arr.appendSlice(&[_][]const u8{
@@ -168,7 +168,7 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
         raylib.addIncludePath(b.path("src/external/glfw/include"));
     }
 
-    var c_source_files = try std.ArrayList([]const u8).initCapacity(b.allocator, 2);
+    var c_source_files = try std.array_list.Managed([]const u8).initCapacity(b.allocator, 2);
     c_source_files.appendSliceAssumeCapacity(&.{ "src/rcore.c", "src/utils.c" });
 
     if (options.rshapes) {
@@ -261,14 +261,14 @@ fn compileRaylib(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.
                 raylib.addSystemIncludePath(.{ .cwd_relative = androidAsmPath });
                 raylib.addSystemIncludePath(.{ .cwd_relative = androidGluePath });
 
-                var libcData = std.ArrayList(u8).init(b.allocator);
-                const writer = libcData.writer();
+                var libcData: std.ArrayList(u8) = .empty;
+                var aw: std.Io.Writer.Allocating = .fromArrayList(b.allocator, &libcData);
                 try (std.zig.LibCInstallation{
                     .include_dir = androidIncludePath,
                     .sys_include_dir = androidIncludePath,
                     .crt_dir = androidApiSpecificPath,
-                }).render(writer);
-                const libcFile = b.addWriteFiles().add("android-libc.txt", try libcData.toOwnedSlice());
+                }).render(&aw.writer);
+                const libcFile = b.addWriteFiles().add("android-libc.txt", try libcData.toOwnedSlice(b.allocator));
                 raylib.setLibCFile(libcFile);
 
                 if (options.opengl_version == .auto) {
